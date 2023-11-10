@@ -1,26 +1,26 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, redirect, useParams, useSubmit, useNavigation } from 'react-router-dom';
 import { fetchEvent, updateEvent, queryClient } from '../../util/http.js';
 import Modal from '../UI/Modal.jsx';
 import EventForm from './EventForm.jsx';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import LoadingIndicator from '../UI/LoadingIndicator.jsx';
+import { useQuery,/*  useMutation  */} from '@tanstack/react-query';
 import ErrorBlock from '../UI/ErrorBlock.jsx';
 
 export default function EditEvent() {
+  const submit = useSubmit();
   const navigate = useNavigate();
   const params = useParams();
-
+  const { state } = useNavigation();
   function handleSubmit(formData) {
-    mutate({id: params.id, event: formData});
-    navigate('../');
+   submit(formData, {method: 'PUT'});
   }
 
-  const {data, isPending, isError, error} = useQuery({
+  const {data, isError, error} = useQuery({
     queryKey: ['events', params.id],
-    queryFn: ({signal}) => fetchEvent({signal, id: params.id})
+    queryFn: ({signal}) => fetchEvent({signal, id: params.id}),
+    staleTime: 10000
   });
   
-  const {mutate} = useMutation({
+ /*  const {mutate} = useMutation({
     mutationFn: updateEvent,
     onMutate: async (data) => {
       const newEvent = data.event;
@@ -35,19 +35,13 @@ export default function EditEvent() {
     onSettled: () => {
       queryClient.invalidateQueries(['events', params.id]);
     }
-  });
+  }); */
 
   function handleClose() {
     navigate('../');
   }
 
   let content;
-
-  if (isPending) {
-    content = <div className='center'>
-      <LoadingIndicator/>
-    </div>
-  }
 
   if (isError) {
     content = (
@@ -65,12 +59,17 @@ export default function EditEvent() {
   if (data) {
     content = (
       <EventForm inputData={data} onSubmit={handleSubmit}>
-        <Link to="../" className="button-text">
-          Cancel
-        </Link>
-        <button type="submit" className="button">
-          Update
-        </button>
+       {state === 'submitting' ? 
+        (<p>Sending data...</p>) : (
+         <>
+          <Link to="../" className="button-text">
+            Cancel
+          </Link>
+          <button type="submit" className="button">
+            Update
+          </button>
+         </>
+        )}
      </EventForm>
     )
   }
@@ -80,4 +79,19 @@ export default function EditEvent() {
      {content}
     </Modal>
   );
+}
+
+export const loader = ({params}) => {
+  return queryClient.fetchQuery({
+    queryKey: ['events', params.id],
+    queryFn: ({signal}) => fetchEvent({signal, id: params.id})
+  });
+}
+
+export const action = async ({request, params}) => {
+  const formData = await request.formData();
+  const updatedEventData = Object.fromEntries(formData);
+  await updateEvent({id: params.id, event: updatedEventData});
+  await queryClient.invalidateQueries(['events']);
+  redirect('../');
 }
